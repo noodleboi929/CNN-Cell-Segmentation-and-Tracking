@@ -17,6 +17,18 @@ def convolution (img_array, kernel, stride):
     #print("convolution completed")
     return dot_matrix
 
+# idk how stride would work for up_conv
+
+def up_conv (img_array, kernel):
+    up_img = [[0 for i in range(0, (len(kernel) * len(img_array)))] for j in range(0, (len(kernel) * len(img_array)))]
+    up_img = np.asarray(up_img)
+    for i in range(0, len(img_array)):
+        for j in range(0, len(img_array)):
+            up_img[(len(kernel) * i) : ((len(kernel) * i) + len(kernel)), (len(kernel) * j) : ((len(kernel) * j) + len(kernel))] = img_array[i,j] * kernel
+    return up_img
+
+
+
 def normalize_array(arr, min_value, max_value): 
   normalized_array = (max_value - min_value) * (arr - arr.min()) / (arr.max() - arr.min()) + min_value
   return normalized_array
