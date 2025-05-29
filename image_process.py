@@ -44,15 +44,16 @@ n_scratch_array = [[0 for i in range(0, image.shape[1])] for j in range(0, image
 agreggate_array = [[0 for i in range(0, image.shape[1])] for j in range(0, image.shape[0])]
 agreggate_array = np.asarray(agreggate_array)
 for cell in cells:
+    n_scratch_array = np.zeros_like(image)
     #Conversion protocol
     for i in range(0,image.shape[0]):
         for j in range(0,len(image[i])):
             if (i,j) in cell:
-                n_scratch_array[i][j] = 255
+                n_scratch_array[i , j] = 255
             elif (i,j) in background:
-                n_scratch_array[i][j] = 255
+                n_scratch_array[i , j] = 255
             else:
-                n_scratch_array[i][j] = 0
+                n_scratch_array[i , j] = 0
     #Distance Transform
     n_scratch_array = np.asarray(n_scratch_array, dtype= np.uint8)
     n_dist = cv2.distanceTransform(n_scratch_array, cv2.DIST_L2, 5)
@@ -66,7 +67,7 @@ for cell in cells:
 imwrite('n_dist_debug.tif', agreggate_array)
 #grayscale closing
 kernel = np.ones((5,5),np.uint8)
-agreggate_array = agreggate_array.astype(np.uint8)
+# agreggate_array = agreggate_array.astype(np.uint8)
 closed_aggregate_array = cv2.morphologyEx(agreggate_array, cv2.MORPH_CLOSE, kernel)
 imwrite('n_dist_debug_2.tif', agreggate_array)
 imwrite('n_dist_debug_3.tif', closed_aggregate_array)
