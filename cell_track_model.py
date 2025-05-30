@@ -8,12 +8,13 @@ from pathlib import Path
 # We will create a more modular system for the model definition using python clases
 
 def convolution (img_array, kernel, stride):
-    dot_matrix = [[0 for i in range(0, math.floor((len(img_array) - len(kernel) + stride) / stride))] for j in range (0, math.floor((len(img_array) - len(kernel) + stride) / stride))]
-    dot_matrix = np.asarray(dot_matrix)
+    # dot_matrix = [[0 for i in range(0, math.floor((len(img_array) - len(kernel) + stride) / stride))] for j in range (0, math.floor((len(img_array) - len(kernel) + stride) / stride))]
+    # dot_matrix = np.asarray(dot_matrix)
+    dot_matrix = np.zeros((math.floor((len(img_array) - len(kernel) + stride) / stride), math.floor((len(img_array) - len(kernel) + stride) / stride)), dtype= np.float32)
     for i in range(0, len(img_array), stride):
         for j in range(0, len(img_array), stride):
             if ((i + len(kernel)) <= len(img_array)) and ((j + len(kernel)) <= len(img_array)):
-                dot_matrix[i // stride, j // stride] = np.sum(img_array[i : i + len(kernel), j : j + len(kernel)] * kernel)
+                dot_matrix[i // stride, j // stride] = np.sum(img_array[i : i + len(kernel), j : j + len(kernel)] * kernel, dtype= np.float32)
     #print("convolution completed")
     return dot_matrix
 
@@ -21,13 +22,32 @@ def convolution (img_array, kernel, stride):
 
 def up_conv (img_array, kernel, stride):
     out_dim = (len(img_array) - 1) * stride + len(kernel)
-    up_img = [[0 for i in range(0, out_dim)] for j in range(0, out_dim)]
-    up_img = np.asarray(up_img)
+    up_img = np.zeros((out_dim, out_dim), dtype= np.float64)
     for i in range(0, len(img_array)):
         for j in range(0, len(img_array)):
             patch = [[(np.sum(img_array[i,j] * kernel[x,y])) for x in range(0, len(kernel))] for y in range (0, len(kernel))]
             up_img[(stride * i) : ((stride * i) + len(kernel)), (stride * j) : ((stride * j) + len(kernel))] += np.asarray(patch)
     return up_img
+
+
+def shrink (img_array, shrink_val):
+    H, W = img_array.shape[:2]
+    if len(img_array.shape) > 2:
+        C = img_array.shape[2]
+        shrunk_img = np.zeros(((H - shrink_val), (W - shrink_val),C))
+    else:
+        C = 1
+        shrunk_img = np.zeros(((H - shrink_val), (W - shrink_val)))
+    kernel= np.ones((shrink_val + 1, shrink_val + 1))
+    for i in range(0, len(img_array)):
+        for j in range(0, len(img_array)):
+            if ((i + len(kernel)) <= len(img_array)) and ((j + len(kernel)) <= len(img_array)):
+                if C > 1:
+                    for c in range(0, C):
+                        shrunk_img[i,j, c] = np.sum(img_array[i : i + len(kernel), j : j + len(kernel), c] * kernel)
+                else:
+                    shrunk_img[i,j] = np.sum(img_array[i : i + len(kernel), j : j + len(kernel)] * kernel)
+    return shrunk_img
 
 """
 print("testing for up-conv")
@@ -193,13 +213,14 @@ class Concatenate(convBaseLayer):
         feature_maps = []
         for i in range(0, len(self.input_sources)):
             if len(self.input_sources[i].out_gen()) > min_len:
-                feature_maps.append()
+                feature_maps.append(shrink(self.input_sources[i].out_gen(), len(self.input_sources[i].out_gen()) - min_len))
                 # Add a kernel based reductino scheme
-        feature_maps = [source.out_gen() for source in self.input_sources]
-        return np.concatenate(feature_map_save, axis = -1)
+            else:
+                feature_maps.append(self.input_sources[i].out_gen())
+        return np.concatenate(feature_maps, axis = -1)
     
     def transform_output(self, feature_map):
-        return feature_map
+        return normalize_array(vectorize_reLu(feature_map), 0, 1)
     
     def prev_dmg_f_maps(self):
         return False
@@ -391,16 +412,25 @@ def encoder_block(input_img):
     print("conv_10 completed")
 
     # Input tensor: (23,23, 1024)
-    # Output tensor: (46, 46, 1024)
+    # Output tensor: (46, 46, 512)
     # Kernel Dimensions: 2 X 2 X 1024
-    # Number of Kernels: 1024
+    # Number of Kernels: 512
     # Stride: 2
     
-    e_m = UpConv((2,2, 1024), 1024, 2, e_m, "up_conv_1")
+    e_m = UpConv((2,2, 1024), 512, 2, e_m, "up_conv_1")
 
     feature_map_save(e_m)
 
     print("up_conv_1 completed")
+
+    # Input tensor: (46, 46, 512) & (55, 55, 512)
+    # Output tensor: (46,46, 1024)
+    
+    e_m = Concatenate([e_m, skip_connection_4], "concate_1")
+
+    feature_map_save(e_m)
+
+    print("concate_1 completed")
 
     # Input tensor: (46, 46, 1024)
     # Output tensor: (44, 44, 512)
@@ -435,6 +465,13 @@ def encoder_block(input_img):
     feature_map_save(e_m)
 
     print("up_conv_2 completed")
+
+    # Input tensor: (84, 84, 256) & (120, 120, 256)
+    # Output tensor: (84,84, 512)
+    
+    e_m = Concatenate([e_m, skip_connection_3], "Concatenate_2")
+
+    print("Concatenate_2 Completed")
 
     # Input tensor: (84, 84, 512)
     # Output tensor: (82, 82, 256)
@@ -472,6 +509,13 @@ def encoder_block(input_img):
 
     print("up_conv_3 completed")
 
+    # Input tensor: (160, 160, 128) & (249, 249, 128)
+    # Output tensor: (160, 160, 256)
+    
+    e_m = Concatenate([e_m, skip_connection_2], "Concat_3")
+
+    print("Concat_3 completed")
+
     # Input tensor: (160, 160, 256)
     # Output tensor: (158, 158, 198)
     # Kernel Dimensions: 3 X 3 X 256
@@ -507,12 +551,19 @@ def encoder_block(input_img):
 
     print("up_conv_4 completed")
 
-    # Input tensor: (312, 312, 64)
+    # Input tensor: (312, 312, 64) & (508, 508, 64)
+    # Output tensor: (312, 312, 128)
+    
+    e_m = Concatenate([e_m, skip_connection_1], "Concat_4")
+
+    print("Concat_4 completed")
+
+    # Input tensor: (312, 312, 128)
     # Output tensor: (284, 284, 64)
     # Kernel Dimensions: 29 X 29 X 64
     # Number of Kernels: 64
     
-    e_m = Conv2DLayer((29,29,64), 64, 1, e_m, "conv_17")
+    e_m = Conv2DLayer((29,29,128), 64, 1, e_m, "conv_17")
 
     feature_map_save(e_m)
 
