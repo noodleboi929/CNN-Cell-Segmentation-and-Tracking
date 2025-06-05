@@ -67,10 +67,17 @@ def normalize_array(arr, min_value, max_value):
 def reLu (x):
     return max(0, x)
 
+def derv_relu (x):
+    if x < 0 :
+        return 0
+    return 1
+
+vectorize_derv_relu = np.vectorize(derv_relu)
+
 vectorize_reLu = np.vectorize(reLu)
 
 class convBaseLayer :
-    def __init__(self, kernel_size, kernel_amount, stride, input_source, layer_name):
+    def __init__(self, kernel_size, kernel_amount, stride, input_source, layer_name, load_bool):
         #Replace with .npy for more efficent computation
         self.kernel_num = kernel_amount
         self.c_stride = stride
@@ -78,6 +85,8 @@ class convBaseLayer :
         self.input_source = input_source
 
         self.name = layer_name
+
+        self.load_val = load_bool
 
         print(kernel_size)
         
@@ -117,6 +126,16 @@ class convBaseLayer :
     
     # I should save my out_gen from previous layers since its recusive
     def out_gen (self):
+        if self.load_val and os.path.exists(f"{self.name}_feature_maps") and (len(os.listdir(f"{self.name}_feature_maps")) > 0):
+            load_tensor = []
+            for file in os.listdir(f"{self.name}_feature_maps"):
+                full_path = os.path.join(f"{self.name}_feature_maps", file)
+                load_tensor.append(imread(full_path))
+            load_tensor = np.transpose(np.stack(load_tensor), (1,2,0))
+            print("loaded_tensor: ")
+            print(load_tensor.shape)
+            return load_tensor
+
         feature_maps = [] 
         if self.prev_dmg_f_maps():
             folder_path = f"{self.input_source.name}_feature_maps"
@@ -198,11 +217,13 @@ class UpConv(convBaseLayer):
         return up_conv(input_val, kern, str)
 
 class Concatenate(convBaseLayer):
-    def __init__(self, input_sources, layer_name):
+    def __init__(self, input_sources, layer_name, load_bool):
         
         self.input_sources = input_sources
 
         self.name = layer_name
+
+        self.load_val = load_bool
     
     def get_input(self):
         # To account for cropping and copying, a fitted kernel convolution program can be used with a kernel filled with 1 to matain features while shriking the image
@@ -229,6 +250,15 @@ class Concatenate(convBaseLayer):
         return input_val
     
     def out_gen(self):
+        if self.load_val and os.path.exists(f"{self.name}_feature_maps") and (len(os.listdir(f"{self.name}_feature_maps")) > 0):
+            load_tensor = []
+            for file in os.listdir(f"{self.name}_feature_maps"):
+                full_path = os.path.join(f"{self.name}_feature_maps", file)
+                load_tensor.append(imread(full_path))
+            load_tensor = np.transpose(np.stack(load_tensor), (1,2,0))
+            print("loaded_tensor: ")
+            print(load_tensor.shape)
+            return load_tensor
         output = self.get_input()
         print(f"Concatenated Output shape: {output.shape}")
         return output
@@ -244,13 +274,13 @@ def feature_map_save(layer):
 
 
 
-def encoder_block(input_img):
+def encoder_block(input_img, load_bool):
     # Input tensor: (512, 512, 1)
     # Output tensor: (510, 510, 64)
     # Kernel Dimensions: 3 X 3
     # Number of Kernels: 64 
 
-    e_m = InputLayer((3,3), 64, 1, input_img, "conv_1")
+    e_m = InputLayer((3,3), 64, 1, input_img, "conv_1", load_bool)
 
     feature_map_save(e_m)
 
@@ -261,7 +291,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 64
     # Number of Kernels: 64 
 
-    e_m = Conv2DLayer((3,3, 64), 64, 1, e_m, "conv_2")
+    e_m = Conv2DLayer((3,3, 64), 64, 1, e_m, "conv_2", load_bool)
 
     skip_connection_1 = e_m
     
@@ -275,7 +305,7 @@ def encoder_block(input_img):
     # Number of Kernels: 1
     # Stride: 2 
 
-    e_m = Conv2DLayerPool((3,3, 64),1,2,e_m, "pool_1")
+    e_m = Conv2DLayerPool((3,3, 64),1,2,e_m, "pool_1", load_bool)
 
     feature_map_save(e_m)
 
@@ -286,7 +316,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3
     # Number of Kernels: 128
     
-    e_m = Conv2DLayer((3,3), 128, 1, e_m, "conv_3")
+    e_m = Conv2DLayer((3,3), 128, 1, e_m, "conv_3", load_bool)
 
     feature_map_save(e_m)
 
@@ -297,7 +327,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 128
     # Number of Kernels: 128
     
-    e_m = Conv2DLayer((3,3, 128), 128, 1, e_m, "conv_4")
+    e_m = Conv2DLayer((3,3, 128), 128, 1, e_m, "conv_4", load_bool)
 
     skip_connection_2 = e_m
     
@@ -311,7 +341,7 @@ def encoder_block(input_img):
     # Number of Kernels: 1
     # Stride: 2
     
-    e_m = Conv2DLayerPool((3,3, 128),1,2,e_m,"pool_2")
+    e_m = Conv2DLayerPool((3,3, 128),1,2,e_m,"pool_2", load_bool)
 
     feature_map_save(e_m)
 
@@ -322,7 +352,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3
     # Number of Kernels: 256
     
-    e_m = Conv2DLayer((3,3), 256, 1, e_m ,"conv_5")
+    e_m = Conv2DLayer((3,3), 256, 1, e_m ,"conv_5", load_bool)
 
     feature_map_save(e_m)
 
@@ -333,7 +363,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 256
     # Number of Kernels: 256
     
-    e_m = Conv2DLayer((3,3, 256),256, 1, e_m, "conv_6")
+    e_m = Conv2DLayer((3,3, 256),256, 1, e_m, "conv_6", load_bool)
 
     skip_connection_3 = e_m
     
@@ -347,7 +377,7 @@ def encoder_block(input_img):
     # Number of Kernels: 1
     # stride: 2
     
-    e_m = Conv2DLayerPool((3,3, 256),1,2,e_m,"pool_3")
+    e_m = Conv2DLayerPool((3,3, 256),1,2,e_m,"pool_3", load_bool)
 
     feature_map_save(e_m)
 
@@ -358,7 +388,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3
     # Number of Kernels: 512
     
-    e_m = Conv2DLayer((3,3),512, 1, e_m, "conv_7")
+    e_m = Conv2DLayer((3,3),512, 1, e_m, "conv_7", load_bool)
 
     feature_map_save(e_m)
 
@@ -369,7 +399,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 512
     # Number of Kernels: 512
     
-    e_m = Conv2DLayer((3,3, 512), 512, 1, e_m, "conv_8")
+    e_m = Conv2DLayer((3,3, 512), 512, 1, e_m, "conv_8", load_bool)
 
     skip_connection_4 = e_m
     
@@ -383,7 +413,7 @@ def encoder_block(input_img):
     # Number of Kernels: 1
     # Stride: 2
     
-    e_m = Conv2DLayerPool((3,3, 512), 1, 2, e_m, "pool_4")
+    e_m = Conv2DLayerPool((3,3, 512), 1, 2, e_m, "pool_4", load_bool)
 
     feature_map_save(e_m)
 
@@ -394,7 +424,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3
     # Number of Kernels: 1024
     
-    e_m = Conv2DLayer((3,3), 1024, 1, e_m, "conv_9")
+    e_m = Conv2DLayer((3,3), 1024, 1, e_m, "conv_9", load_bool)
 
     feature_map_save(e_m)
 
@@ -405,7 +435,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 1024
     # Number of Kernels: 1024
     
-    e_m = Conv2DLayer((3, 3, 1024), 1024, 1, e_m, "conv_10")
+    e_m = Conv2DLayer((3, 3, 1024), 1024, 1, e_m, "conv_10", load_bool)
 
     feature_map_save(e_m)
 
@@ -417,7 +447,7 @@ def encoder_block(input_img):
     # Number of Kernels: 512
     # Stride: 2
     
-    e_m = UpConv((2,2, 1024), 512, 2, e_m, "up_conv_1")
+    e_m = UpConv((2,2, 1024), 512, 2, e_m, "up_conv_1", load_bool)
 
     feature_map_save(e_m)
 
@@ -426,7 +456,7 @@ def encoder_block(input_img):
     # Input tensor: (46, 46, 512) & (55, 55, 512)
     # Output tensor: (46,46, 1024)
     
-    e_m = Concatenate([e_m, skip_connection_4], "concate_1")
+    e_m = Concatenate([e_m, skip_connection_4], "concate_1", load_bool)
 
     feature_map_save(e_m)
 
@@ -437,7 +467,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 1024
     # Number of Kernels: 512
     
-    e_m = Conv2DLayer((3,3,1024), 512, 1, e_m, "conv_11")
+    e_m = Conv2DLayer((3,3,1024), 512, 1, e_m, "conv_11", load_bool)
 
     feature_map_save(e_m)
 
@@ -448,7 +478,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 512
     # Number of Kernels: 512
     
-    e_m = Conv2DLayer((3,3,512), 512, 1, e_m, "conv_12")
+    e_m = Conv2DLayer((3,3,512), 512, 1, e_m, "conv_12", load_bool)
 
     feature_map_save(e_m)
 
@@ -460,7 +490,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 2 X 2 X 512
     # Number of Kernels: 512
     
-    e_m = UpConv((2,2,512), 256, 2, e_m, "up_conv_2")
+    e_m = UpConv((2,2,512), 256, 2, e_m, "up_conv_2", load_bool)
 
     feature_map_save(e_m)
 
@@ -469,7 +499,7 @@ def encoder_block(input_img):
     # Input tensor: (84, 84, 256) & (120, 120, 256)
     # Output tensor: (84,84, 512)
     
-    e_m = Concatenate([e_m, skip_connection_3], "Concatenate_2")
+    e_m = Concatenate([e_m, skip_connection_3], "Concatenate_2", load_bool)
 
     print("Concatenate_2 Completed")
 
@@ -478,7 +508,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 512
     # Number of Kernels: 256
     
-    e_m = Conv2DLayer((3,3,512), 256, 1, e_m, "conv_13")
+    e_m = Conv2DLayer((3,3,512), 256, 1, e_m, "conv_13", load_bool)
 
     feature_map_save(e_m)
 
@@ -489,7 +519,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 256
     # Number of Kernels: 256
     
-    e_m = Conv2DLayer((3,3,256), 256, 1, e_m, "conv_14")
+    e_m = Conv2DLayer((3,3,256), 256, 1, e_m, "conv_14", load_bool)
 
     feature_map_save(e_m)
 
@@ -503,7 +533,7 @@ def encoder_block(input_img):
     # Stride: 2
     
     
-    e_m = UpConv((2,2, 256), 128, 2, e_m, "up_conv_3")
+    e_m = UpConv((2,2, 256), 128, 2, e_m, "up_conv_3", load_bool)
 
     feature_map_save(e_m)
 
@@ -512,7 +542,7 @@ def encoder_block(input_img):
     # Input tensor: (160, 160, 128) & (249, 249, 128)
     # Output tensor: (160, 160, 256)
     
-    e_m = Concatenate([e_m, skip_connection_2], "Concat_3")
+    e_m = Concatenate([e_m, skip_connection_2], "Concat_3", load_bool)
 
     print("Concat_3 completed")
 
@@ -521,7 +551,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 256
     # Number of Kernels: 198
     
-    e_m = Conv2DLayer((3,3,256), 198, 1, e_m, "conv_15")
+    e_m = Conv2DLayer((3,3,256), 198, 1, e_m, "conv_15", load_bool)
 
     feature_map_save(e_m)
 
@@ -532,7 +562,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 198
     # Number of Kernels: 128
     
-    e_m = Conv2DLayer((3,3,198), 128, 1, e_m, "conv_16")
+    e_m = Conv2DLayer((3,3,198), 128, 1, e_m, "conv_16", load_bool)
 
     feature_map_save(e_m)
 
@@ -545,16 +575,16 @@ def encoder_block(input_img):
     # Number of Kernels: 64
     # Stride: 2
     
-    e_m = UpConv((2,2, 128), 64, 2, e_m, "up_conv_4")
+    e_m = UpConv((2,2, 128), 64, 2, e_m, "up_conv_4", load_bool)
 
     feature_map_save(e_m)
 
-    print("up_conv_4 completed")
+    print("up_conv_4 completed", load_bool)
 
     # Input tensor: (312, 312, 64) & (508, 508, 64)
     # Output tensor: (312, 312, 128)
     
-    e_m = Concatenate([e_m, skip_connection_1], "Concat_4")
+    e_m = Concatenate([e_m, skip_connection_1], "Concat_4", load_bool)
 
     print("Concat_4 completed")
 
@@ -563,7 +593,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 29 X 29 X 64
     # Number of Kernels: 64
     
-    e_m = Conv2DLayer((29,29,128), 64, 1, e_m, "conv_17")
+    e_m = Conv2DLayer((29,29,128), 64, 1, e_m, "conv_17", load_bool)
 
     feature_map_save(e_m)
 
@@ -574,7 +604,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 27 X 27 X 64
     # Number of Kernels: 64
     
-    e_m = Conv2DLayer((27,27,64), 64, 1, e_m, "conv_18")
+    e_m = Conv2DLayer((27,27,64), 64, 1, e_m, "conv_18", load_bool)
 
     feature_map_save(e_m)
 
@@ -585,7 +615,7 @@ def encoder_block(input_img):
     # Kernel Dimensions: 3 X 3 X 64
     # Number of Kernels: 64
     
-    e_m = Conv2DLayer((3,3,64), 64, 1, e_m, "conv_19")
+    e_m = Conv2DLayer((3,3,64), 64, 1, e_m, "conv_19", load_bool)
 
     feature_map_save(e_m)
 
@@ -597,7 +627,7 @@ def encoder_block(input_img):
     # Number of Kernels: 64
     # Stride: 2
 
-    e_m = UpConv((2,2, 64), 64, 2, e_m, "up_conv_5")
+    e_m = UpConv((2,2, 64), 64, 2, e_m, "up_conv_5", load_bool)
 
     feature_map_save(e_m)
 
@@ -609,11 +639,87 @@ def encoder_block(input_img):
     # Number of Kernels: 2
     # Stride: 1
     
-    e_m = Conv2DLayer((1,1,64),2, 1, e_m, "conv_20")
+    e_m = Conv2DLayer((1,1,64),1, 1, e_m, "conv_20", load_bool)
 
     feature_map_save(e_m)
 
     print("conv_20 completed")
+
+    return e_m
+
+#I will now define the functions used for backpropation based on the layer being propagated:
+
+def conv_back(curr_layer, ahead_layer, dC_dOn):
+    # In order to calculate dC/dk(n-1) we must calculate multiple individual terms
+    n_out = ahead_layer.out_gen()
+
+    n_1_out = curr_layer.out_gen()
+
+    n_2_out = curr_layer.input_source.out_gen()
+
+    # First we will calculate dC/dO(n-1) = dOn/dRn * dRn/dO(n-1) * dC/dOn
+    dOn_dRn = vectorize_derv_relu(n_out)
+
+    k_rot = np.rot90(ahead_layer.kernels, k=2, axes=(1, 2))
+
+    dc_dO_n_1 = up_conv(np.multiply(dOn_dRn, dC_dOn), k_rot, 1)
+
+    # Next we will determine the value of dR(n-1) / dk(n-1)
+
+    dRn1_dkn1 = n_2_out
+
+    # Finally we will calculaye dO(n-1)/dR(n-1)
+
+    dOn1_dRn1 = vectorize_derv_relu(n_1_out)
+
+    #Final calculation
+
+    error_signal = np.multiply(dOn1_dRn1, dc_dO_n_1)
+
+    dC_dk1 = []
+
+    for index in curr_layer.kernel_num:
+        for pos in curr_layer.input_source.kernel_num:
+            dC_dk1.append(convolution(dRn1_dkn1[..., index], error_signal[..., index]))
+    
+    
+    dC_dk1 = np.transpose(np.stack(dC_dk1), (1,2,0) )
+    print(dC_dk1.shape)
+
+
+
+# Function name is self-explanatory
+def backpropagation(model, g_t):
+    # Based on the model architecture, we know that the model will be at its last layer when inputted
+    # g_t is the ground truth being used for backpropagation
+    # Firts we will calculate the error signal via the output of the last layer (On) times 2(On - t) where t is the ground truth
+    # Kernels can be automatically updated after gradient is caclulated because they aren't used in further backpropagation
+    g_t_img = imread(g_t)
+
+    gt_array = np.asarray(g_t_img)
+    
+    output_n = model.out_gen()
+
+    output_n_1 = model.input_source.out_gen()
+
+    error_signal = np.multiply(vectorize_derv_relu(output_n), 2*(output_n - gt_array))
+
+    kernel_gradient = []
+
+    for index in range(0, model.input_source.kernel_num):
+
+        kernel_gradient.append(convolution(output_n_1[..., index], error_signal, 1))
+
+    kernel_gradient = np.transpose(np.stack(kernel_gradient), (1,2,0))
+
+    print(kernel_gradient.shape)
+
+    while model.name != "conv_19":
+        model = model.input_source
+
+    conv_back(model.input_source, model, np.random.rand(256, 256, 64))
+    # A correctness check measure
+
 
 
 
@@ -628,4 +734,6 @@ image = imread(input_image)
 image_array = np.asarray(image)
 
 
-curr_model = encoder_block(image_array)
+curr_model = encoder_block(image_array, True)
+
+backpropagation_test = backpropagation(curr_model, "test.tif")
