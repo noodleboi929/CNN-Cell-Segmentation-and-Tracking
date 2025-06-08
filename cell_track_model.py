@@ -649,6 +649,9 @@ def encoder_block(input_img, load_bool):
 
 #I will now define the functions used for backpropation based on the layer being propagated:
 
+
+
+
 def conv_back(curr_layer, ahead_layer, dC_dOn):
     # In order to calculate dC/dk(n-1) we must calculate multiple individual terms
     n_out = ahead_layer.out_gen()
@@ -662,13 +665,41 @@ def conv_back(curr_layer, ahead_layer, dC_dOn):
 
     k_rot = np.rot90(ahead_layer.kernels, k=2, axes=(1, 2))
 
-    dc_dO_n_1 = up_conv(np.multiply(dOn_dRn, dC_dOn), k_rot, 1)
+    print(dOn_dRn.shape)
+
+    print(np.multiply(dOn_dRn, dC_dOn).shape)
+
+    print(k_rot.shape)
+
+    print(n_1_out.shape)
+
+    dc_dO_n_1 = []
+
+    dC_dRn = np.multiply(dOn_dRn, dC_dOn)
+
+    
+    
+
+    for index in range(0,ahead_layer.kernel_num):
+        kernel = k_rot[index]
+        out_dim = (len(dC_dRn) - 1) * 1 + len(kernel)
+        up_img = np.zeros((out_dim, out_dim), dtype= np.float64)
+        for i in range(0, len(dC_dRn)):
+            for j in range(0, len(dC_dRn[i])):
+                voxel = dC_dRn[i,j]
+                patch = np.multiply(kernel, voxel[None,None, :])
+                up_img[i : i + len(kernel), j : j + len(kernel)] += np.sum(patch, axis= -1)
+        dc_dO_n_1.append(up_img)
+    
+    dc_dO_n_1 = np.transpose(np.stack(dc_dO_n_1), (1,2,0))
+
+    print(dc_dO_n_1.shape)
 
     # Next we will determine the value of dR(n-1) / dk(n-1)
 
     dRn1_dkn1 = n_2_out
 
-    # Finally we will calculaye dO(n-1)/dR(n-1)
+    # Finally we will calculate dO(n-1)/dR(n-1)
 
     dOn1_dRn1 = vectorize_derv_relu(n_1_out)
 
@@ -676,15 +707,21 @@ def conv_back(curr_layer, ahead_layer, dC_dOn):
 
     error_signal = np.multiply(dOn1_dRn1, dc_dO_n_1)
 
+    print(error_signal.shape)
+
     dC_dk1 = []
 
-    for index in curr_layer.kernel_num:
-        for pos in curr_layer.input_source.kernel_num:
-            dC_dk1.append(convolution(dRn1_dkn1[..., index], error_signal[..., index]))
+    for index in range(0, curr_layer.kernel_num):
+        array_holder = []
+        for pos in range(0,  curr_layer.input_source.kernel_num):
+            array_holder.append(convolution(dRn1_dkn1[..., pos], error_signal[..., index], 1))
+        array_holder = np.transpose(np.stack(array_holder), (1,2,0))
+        dC_dk1.append(array_holder)
     
     
-    dC_dk1 = np.transpose(np.stack(dC_dk1), (1,2,0) )
+    dC_dk1 = np.stack(dC_dk1)
     print(dC_dk1.shape)
+    np.save(f"back_prop_gradients\{curr_layer.name}.npy", dC_dk1)
 
 
 
