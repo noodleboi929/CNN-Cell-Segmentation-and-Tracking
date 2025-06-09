@@ -88,6 +88,8 @@ class convBaseLayer :
 
         self.load_val = load_bool
 
+        self.kernel_dim = kernel_size
+
         print(kernel_size)
         
         
@@ -652,76 +654,78 @@ def encoder_block(input_img, load_bool):
 
 
 
-def conv_back(curr_layer, ahead_layer, dC_dOn):
-    # In order to calculate dC/dk(n-1) we must calculate multiple individual terms
-    n_out = ahead_layer.out_gen()
+def conv_back(curr_layer, ahead_layer, dC_dOn_1):
+    # The following code will calculate dC/dkn for some arbitrary nth convolutional layer
+    # In regards to variable naming convention, n_p_1 = (n+1) and n_m_1 = (n-1)
 
-    n_1_out = curr_layer.out_gen()
+    n_layer = curr_layer
 
-    n_2_out = curr_layer.input_source.out_gen()
+    n_p_1_layer = ahead_layer
 
-    # First we will calculate dC/dO(n-1) = dOn/dRn * dRn/dO(n-1) * dC/dOn
-    dOn_dRn = vectorize_derv_relu(n_out)
+    n_m_1_layer = curr_layer.input_source
 
-    k_rot = np.rot90(ahead_layer.kernels, k=2, axes=(1, 2))
+    # Equation to caclualte dC/dkn is dC/dkn = dRn/dkn * dOn/dRn * dC/dOn
+    # First dC/dOn = dO(n+1)/dOn * dC/dO(n+1) with the assumption that dC/dO(n+1) has already been calculated
+    # Then dO(n+1)/dOn = dR(n+1)/dOn * dO(n+1) / dR(n+1)
 
-    print(dOn_dRn.shape)
+    dO_n_p_1_dR_n_p_1 = vectorize_derv_relu(n_p_1_layer.out_gen())
 
-    print(np.multiply(dOn_dRn, dC_dOn).shape)
+    error_map = dC_dOn_1 * dO_n_p_1_dR_n_p_1
 
-    print(k_rot.shape)
+    dR_n_p_1_dO_n = np.rot90(n_p_1_layer.kernels, 2, axes=(1,2)) #Rotates height and width
 
-    print(n_1_out.shape)
+    kernel_slices = n_layer.kernel_num
 
-    dc_dO_n_1 = []
+    out_dim = (len(error_map) - 1) * 1 + len(dR_n_p_1_dO_n[0])
 
-    dC_dRn = np.multiply(dOn_dRn, dC_dOn)
+    dC_dOn = [np.zeros((out_dim, out_dim), dtype=np.float64) for i in range(0, kernel_slices)]
 
+    for k_slice in range(0, kernel_slices):
+        print(k_slice)
+        for e_slice in range(0, n_p_1_layer.kernel_num):
+            print(e_slice)
+            if kernel_slices == 1:
+                kernel = dR_n_p_1_dO_n[e_slice]
+            else:
+                kernel = dR_n_p_1_dO_n[e_slice, :, :, k_slice]
+            dC_dOn[k_slice] += up_conv(error_map[..., e_slice], kernel, 1)
     
-    
+    dC_dOn = np.transpose(np.stack(dC_dOn), (1,2,0))
 
-    for index in range(0,ahead_layer.kernel_num):
-        kernel = k_rot[index]
-        out_dim = (len(dC_dRn) - 1) * 1 + len(kernel)
-        up_img = np.zeros((out_dim, out_dim), dtype= np.float64)
-        for i in range(0, len(dC_dRn)):
-            for j in range(0, len(dC_dRn[i])):
-                voxel = dC_dRn[i,j]
-                patch = np.multiply(kernel, voxel[None,None, :])
-                up_img[i : i + len(kernel), j : j + len(kernel)] += np.sum(patch, axis= -1)
-        dc_dO_n_1.append(up_img)
-    
-    dc_dO_n_1 = np.transpose(np.stack(dc_dO_n_1), (1,2,0))
+    # dOn/dRn is the derivative of the reLu function applied to the raw output of the nth layer
 
-    print(dc_dO_n_1.shape)
+    dOn_dRn = vectorize_derv_relu(n_layer.out_gen())
 
-    # Next we will determine the value of dR(n-1) / dk(n-1)
+    error_signal = dOn_dRn * dC_dOn
 
-    dRn1_dkn1 = n_2_out
+    print(dC_dOn.shape)
 
-    # Finally we will calculate dO(n-1)/dR(n-1)
+    dRn_dkn = n_m_1_layer.out_gen()
 
-    dOn1_dRn1 = vectorize_derv_relu(n_1_out)
+    # First we should iterate through each slice of the error map
 
-    #Final calculation
+    e_map_depth = n_m_1_layer.kernel_num
 
-    error_signal = np.multiply(dOn1_dRn1, dc_dO_n_1)
+    n_m_1_depth = 1
 
-    print(error_signal.shape)
+    dC_dkn = []
 
-    dC_dk1 = []
+    if len(dRn_dkn.shape) == 3:
+        n_m_1_depth = dRn_dkn.shape[2]
 
-    for index in range(0, curr_layer.kernel_num):
+    for e_slice in range(0, e_map_depth):
         array_holder = []
-        for pos in range(0,  curr_layer.input_source.kernel_num):
-            array_holder.append(convolution(dRn1_dkn1[..., pos], error_signal[..., index], 1))
+        for out in range(0, n_m_1_depth):
+            array_holder.append(convolution(dRn_dkn[..., out], dC_dOn[..., e_slice], 1 ))
         array_holder = np.transpose(np.stack(array_holder), (1,2,0))
-        dC_dk1.append(array_holder)
+        dC_dkn.append(array_holder)
+
+            
     
     
-    dC_dk1 = np.stack(dC_dk1)
-    print(dC_dk1.shape)
-    np.save(f"back_prop_gradients\{curr_layer.name}.npy", dC_dk1)
+    dC_dkn = np.stack(dC_dkn)
+    print(dC_dkn.shape)
+    np.save(f"back_prop_gradients\{curr_layer.name}.npy", dC_dkn)
 
 
 
