@@ -625,7 +625,7 @@ def encoder_block(input_img, load_bool):
 
     # Input tensor: (256, 256, 64)
     # Output tensor: (512, 512, 64)
-    # Kernel Dimensions: 3 X 3 X 64
+    # Kernel Dimensions: 2 X 2 X 64
     # Number of Kernels: 64
     # Stride: 2
 
@@ -651,6 +651,72 @@ def encoder_block(input_img, load_bool):
 
 #I will now define the functions used for backpropation based on the layer being propagated:
 
+def up_conv_back(curr_layer, ahead_layer, dC_dOn_1):
+    # The following code will compute dC/dkn for some arbitrary nth up convolutional layer
+    # In regards to variable naming convention, n_p_1 = (n+1) and n_m_1 = (n-1)
+    # We classifying a up_conv layer concantenation layer block as one layer since they are paired together throughout the model
+
+    n_concat_layer = curr_layer
+
+    n_up_conv_layer = curr_layer.input_source
+
+    n_p_1_layer = ahead_layer
+
+    n_m_1_layer = n_up_conv_layer.input_source
+
+    n_concat_out = n_concat_layer.out_gen()
+
+    # Equation to caclulate is dC/dkn = dRn/dkn * dOn/dRn * dC/dOn
+    # First dc/dOn = dO(n+1)/dOn * dC/dO(n+1) with the assumption that dC/dO(n+1) has already been calculated
+
+    dO_n_p_1_dR_n_p_1 = vectorize_derv_relu(n_p_1_layer.out_gen())
+
+    error_map = dC_dOn_1 * dO_n_p_1_dR_n_p_1
+
+    dR_n_p_1_dO_n = np.rot90(n_p_1_layer.kernels, 2, axes=(1,2)) #Rotates height and width
+
+    kernel_slices = n_concat_out.shape[2]
+
+    out_dim = (len(error_map) - 1) * 1 + len(dR_n_p_1_dO_n[0])
+
+    dC_dOn = [np.zeros((out_dim, out_dim), dtype=np.float64) for i in range(0, kernel_slices)]
+
+    for k_slice in range(0, kernel_slices):
+        print(k_slice)
+        for e_slice in range(0, n_p_1_layer.kernel_num):
+            print(e_slice)
+            if kernel_slices == 1:
+                kernel = dR_n_p_1_dO_n[e_slice]
+            else:
+                kernel = dR_n_p_1_dO_n[e_slice, :, :, k_slice]
+            dC_dOn[k_slice] += up_conv(error_map[..., e_slice], kernel, 1)
+    
+    dC_dOn = np.transpose(np.stack(dC_dOn), (1,2,0))
+
+    # dOn/dRn is the derivative of the reLu function applied to the raw output of the nth layer
+
+    dOn_dRn = vectorize_derv_relu(n_concat_out)
+
+    error_signal = dOn_dRn * dC_dOn
+
+    print(dC_dOn.shape)
+
+    dRn_dkn = n_m_1_layer.out_gen()
+
+    # Rather than using multiple nested for loops to multiply each pixel against their corressponding patch, we will use a reshaping scheme to perform each multiplication 'at the same time' 
+
+    patch_shape = n_up_conv_layer.kernel_dim
+    stride = n_up_conv_layer.stride
+    # patch_store = {}
+    reshape_array = []
+    # indexer = 1
+    for row in range(0, len(dOn_dRn), stride):
+        for col in range(0, len(dOn_dRn), stride):
+            # patch_store[indexer] = dOn_dRn[row : row + patch_shape[0], col : col + patch_shape[1]]
+            reshape_array.append(dOn_dRn[row : row + patch_shape[0], col : col + patch_shape[1]])
+            indexer = indexer + 1
+    
+    re_dOn_dRn = np.stack(reshape_array)
 
 
 
