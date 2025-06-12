@@ -18,7 +18,7 @@ def convolution (img_array, kernel, stride):
     #print("convolution completed")
     return dot_matrix
 
-def convolution_w_reshape (kernel, img_array, stride, kernel_shape, kernel_num):
+def convolution_w_reshape (kernels, img_array, stride, kernel_shape, kernel_num):
     reshape_array = []
     kernel_dim = kernel_shape[0]
     img_dim = len(img_array)
@@ -26,12 +26,16 @@ def convolution_w_reshape (kernel, img_array, stride, kernel_shape, kernel_num):
     for i in range(0, img_dim, stride):
         for j in range(0, img_dim, stride):
             if ((i + kernel_dim) <= img_dim) and ((j + kernel_dim) <= img_dim):
-                reshape_array.append(img_array[i : i + kernel_dim, j : j + kernel_dim])
+                patch = img_array[i : i + kernel_dim, j : j + kernel_dim]
+                tiled_patch = np.tile(patch, (kernel_num,) + tuple(1 for i in range(0, patch.ndim)))
+                reshape_array.append(tiled_patch)
     
-    reshape_array = np.repeat(np.stack(reshape_array), kernel_num) 
-    dot_matrix = (reshape_array * kernel)
+    reshape_array = (np.stack(reshape_array), kernel_num) 
+    dot_matrix = (kernels[None, ...] *  reshape_array)
     dot_matrix = np.sum(dot_matrix, axis=tuple(range(2, dot_matrix.ndim)), dtype= np.float32)
-    dot_matrix = np.reshape(dot_matrix, (kernel_num, final_dim, final_dim))
+    print(f"pre-shaped dim: {dot_matrix.shape}")
+    print(f"Dimension Check: {dot_matrix.shape[1] == (final_dim * final_dim)}")
+    dot_matrix = np.reshape(dot_matrix, (kernel_num, final_dim, final_dim), order= "F")
     dot_matrix = np.transpose(dot_matrix, (1,2,0))
     return dot_matrix
 

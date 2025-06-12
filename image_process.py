@@ -40,36 +40,39 @@ for cell in cells:
             
 """            
 # euclidean distance transofrm for cell neighbor value
-n_scratch_array = [[0 for i in range(0, image.shape[1])] for j in range(0, image.shape[0])]
-agreggate_array = [[0 for i in range(0, image.shape[1])] for j in range(0, image.shape[0])]
-agreggate_array = np.asarray(agreggate_array)
+n_scratch_array = np.zeros_like(image, dtype= np.uint8)
+agreggate_array = np.zeros_like(image, dtype= np.uint8)
+counter = 0
 for cell in cells:
-    n_scratch_array = np.zeros_like(image)
+    counter = counter + 1
+    n_scratch_array = np.zeros_like(image, dtype= np.uint8)
     #Conversion protocol
-    for i in range(0,image.shape[0]):
-        for j in range(0,len(image[i])):
-            if (i,j) in cell:
-                n_scratch_array[i , j] = 255
-            elif (i,j) in background:
-                n_scratch_array[i , j] = 255
-            else:
-                n_scratch_array[i , j] = 0
+    cell_cords = np.array(list(cell))
+    bg_cords = np.array(list(background))
+    n_scratch_array[cell_cords[:, 0], cell_cords[:, 1]] = 255
+    n_scratch_array[bg_cords[:, 0], bg_cords[:, 1]] = 255
+    #imwrite(f'invesion_{counter}.tif', n_scratch_array)
     #Distance Transform
-    n_scratch_array = np.asarray(n_scratch_array, dtype= np.uint8)
     n_dist = cv2.distanceTransform(n_scratch_array, cv2.DIST_L2, 5)
     n_dist_output = cv2.normalize(n_dist, None, 0, 1.0, cv2.NORM_MINMAX)
+    #imwrite(f'distance_transform_{counter}.tif', n_dist_output)
+
+    scaled_output = (n_dist_output * 255).astype(np.uint8)
 
     #Cutting and Inversion
     for (x,y) in cell:
-        agreggate_array[x][y] = abs(n_dist_output[x][y] - 1.0)
+        #print(scaled_output[x][y])
+        agreggate_array[x][y] = abs(scaled_output[x][y] - 255)
     print("Cut and Inversion Completed")
+    #imwrite(f'cut_and_inversion_{counter}.tif',  agreggate_array)
 
-imwrite('n_dist_debug.tif', agreggate_array)
+#imwrite('n_dist_debug.tif', agreggate_array)
 #grayscale closing
 kernel = np.ones((5,5),np.uint8)
 # agreggate_array = agreggate_array.astype(np.uint8)
 closed_aggregate_array = cv2.morphologyEx(agreggate_array, cv2.MORPH_CLOSE, kernel)
-imwrite('n_dist_debug_2.tif', agreggate_array)
+#closed_aggregate_array = cv2.normalize(closed_aggregate_array, None, 0, 1.0, cv2.NORM_MINMAX)
+#imwrite('n_dist_debug_2.tif', agreggate_array)
 imwrite('n_dist_debug_3.tif', closed_aggregate_array)
 scaled_array = closed_aggregate_array ** 3
         
