@@ -18,6 +18,26 @@ def convolution (img_array, kernel, stride):
     #print("convolution completed")
     return dot_matrix
 
+def convolution_w_reshape (kernel, img_array, stride, kernel_shape, kernel_num):
+    reshape_array = []
+    kernel_dim = kernel_shape[0]
+    img_dim = len(img_array)
+    final_dim = math.floor((img_dim - kernel_dim + stride) / stride)
+    for i in range(0, img_dim, stride):
+        for j in range(0, img_dim, stride):
+            if ((i + kernel_dim) <= img_dim) and ((j + kernel_dim) <= img_dim):
+                reshape_array.append(img_array[i : i + kernel_dim, j : j + kernel_dim])
+    
+    reshape_array = np.repeat(np.stack(reshape_array), kernel_num) 
+    dot_matrix = (reshape_array * kernel)
+    dot_matrix = np.sum(dot_matrix, axis=tuple(range(2, dot_matrix.ndim)), dtype= np.float32)
+    dot_matrix = np.reshape(dot_matrix, (kernel_num, final_dim, final_dim))
+    dot_matrix = np.transpose(dot_matrix, (1,2,0))
+    return dot_matrix
+
+
+
+
 #up convolution function that also accounts for channel depth > 1
 
 def up_conv (img_array, kernel, stride):
@@ -658,7 +678,7 @@ def up_conv_back(curr_layer, ahead_layer, dC_dOn_1):
 
     n_concat_layer = curr_layer
 
-    n_up_conv_layer = curr_layer.input_source
+    n_up_conv_layer = curr_layer.input_sources[0]
 
     n_p_1_layer = ahead_layer
 
@@ -707,16 +727,30 @@ def up_conv_back(curr_layer, ahead_layer, dC_dOn_1):
 
     patch_shape = n_up_conv_layer.kernel_dim
     stride = n_up_conv_layer.stride
-    # patch_store = {}
+    depth = n_m_1_layer.kernel_num
     reshape_array = []
-    # indexer = 1
-    for row in range(0, len(dOn_dRn), stride):
-        for col in range(0, len(dOn_dRn), stride):
-            # patch_store[indexer] = dOn_dRn[row : row + patch_shape[0], col : col + patch_shape[1]]
-            reshape_array.append(dOn_dRn[row : row + patch_shape[0], col : col + patch_shape[1]])
-            indexer = indexer + 1
+    reRn_dkn = []
+    for row in range(0, len(error_signal), stride):
+        for col in range(0, len(error_signal), stride):
+            reshape_array.append(error_signal[row : row + patch_shape[0], col : col + patch_shape[1]])
+            reRn_dkn.append(np.repeat(dRn_dkn[row,col], depth))
     
-    re_dOn_dRn = np.stack(reshape_array)
+    re_error_signal = np.stack(reshape_array)
+
+    reRn_dkn = np.stack(reRn_dkn)
+
+    print("reRn_dkn shape:")
+    print(reRn_dkn)
+    print("re_dOn_dRn shape:")
+    print(re_error_signal.shape)
+
+    dC_dkn = np.sum(reRn_dkn * re_error_signal, axis=0)
+
+    print(dC_dkn.shape)
+    np.save(f"back_prop_gradients\{n_up_conv_layer.name}.npy", dC_dkn)
+
+
+
 
 
 
@@ -821,10 +855,10 @@ def backpropagation(model, g_t):
 
     print(kernel_gradient.shape)
 
-    while model.name != "conv_19":
+    while model.name != "conv_17":
         model = model.input_source
 
-    conv_back(model.input_source, model, np.random.rand(256, 256, 64))
+    up_conv_back(model.input_source, model, np.random.rand(284, 284, 64))
     # A correctness check measure
 
 
