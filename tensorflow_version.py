@@ -1,6 +1,13 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+import numpy as np
+from tifffile import imread, imwrite
+import cv2
+import math
+import os
+from pathlib import Path
+
 
 
 # I will define the model using a Functional API
@@ -8,7 +15,8 @@ from tensorflow.keras import layers
 inputs = keras.Input(shape = (512,512, 1))
 
 # Input tensor: (512, 512, 1)
-# Output tensor: (510, 510, 64)
+# Output tensor: (510, 510,
+#  64)
 # Kernel Dimensions: 3 X 3
 # Number of Kernels: 64 
 
@@ -345,6 +353,98 @@ conv_17 = layers.Conv2D(64, (29,29), (1,1), activation = 'relu', use_bias = True
 print("conv_17 completed")
 
 print(conv_17.shape)
+
+# Input tensor: (284, 284, 64)
+# Output tensor: (258, 258, 64)
+# Kernel Dimensions: 27 X 27
+# Number of Kernels: 64
+
+conv_18 = layers.Conv2D(64, (27,27), (1,1), activation = 'relu', use_bias = True)(conv_17)
+
+print("conv_18 completed")
+
+print(conv_18.shape)
+
+# Input tensor: (258, 258, 64)
+# Output tensor: (256, 256, 64)
+# Kernel Dimensions: 3 X 3
+# Number of Kernels: 64
+
+conv_19 = layers.Conv2D(64, (3,3), (1,1), activation = 'relu', use_bias = True)(conv_18)
+
+print("conv_19 completed")
+
+print(conv_19.shape)
+
+# Input tensor: (256, 256, 64)
+# Output tensor: (516, 516, 64)
+# Kernel Dimensions: 2 X 2
+# Number of Kernels: 64
+# Stride: 2
+
+up_conv_5 = layers.Conv2DTranspose(64, (2,2), (2,2), activation = 'relu', use_bias = True)(conv_18)
+
+print("up_conv_5 completed")
+
+print(up_conv_5.shape)
+
+# Input tensor: (512, 512, 64)
+# Output tensor: (512, 512, 2)
+# Kernel Dimensions: 5 X 5
+# Number of Kernels: 2
+# Stride: 1
+
+conv_20 = layers.Conv2D(1, (5,5), (1,1), activation = 'relu', use_bias = True)(up_conv_5)
+
+print("conv_20 completed")
+
+print(conv_20.shape)
+
+model = keras.Model(inputs, conv_20)
+
+model.compile(optimizer='adam',
+              loss='Huber',
+              metrics=['accuracy'])
+
+test_input = imread(r'DIC-C2DH-HeLa\01_ST\SEG\man_seg032.tif')
+
+test_input = test_input.astype(np.float32) / 255.0
+
+test_input = np.expand_dims(test_input, axis=(0, -1))
+
+print(test_input.shape)
+
+test_output = model.predict(test_input)
+
+print(test_output.shape)
+
+imwrite("test_output.tif", test_output[:,:,:,0])
+
+#print("Built with CUDA:", tf.test.is_built_with_cuda())
+
+#print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
+#print(tf.__version__)
+
+input = []
+
+for file in os.listdir(r'DIC-C2DH-HeLa\01_ST\SEG'):
+    full_path = os.path.join(r'DIC-C2DH-HeLa\01_ST\SEG', file)
+    input.append(imread(full_path))
+
+input = np.stack(input)
+
+validation = []
+
+for file in os.listdir("processed_data\cell_distance"):
+    full_path = os.path.join("processed_data\cell_distance", file)
+    validation.append(imread(full_path))
+
+validation = np.stack(validation)
+
+print("input and validation datasets made")
+
+model.fit(input, validation, batch_size= 1,epochs=20)
 
 
 
