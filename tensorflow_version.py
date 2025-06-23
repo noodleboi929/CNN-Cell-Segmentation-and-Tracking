@@ -447,8 +447,8 @@ validation = np.stack(validation)
 
 print("input and validation datasets made")
 
-#model.fit(input, validation, batch_size= 1,epochs=20)
+model.fit(input, validation, batch_size= 1,epochs=20)
 
-#model.save("image_segmentation.keras")
+model.save("image_segmentation.keras")
 
 
