@@ -7,6 +7,7 @@ import cv2
 import math
 import os
 from pathlib import Path
+import sys
 
 
 
@@ -434,6 +435,8 @@ for file in os.listdir(r'DIC-C2DH-HeLa\01_ST\SEG'):
 
 input = np.stack(input)
 
+print(sys.getsizeof(input))
+
 validation = []
 
 for file in os.listdir("processed_data\cell_distance"):
@@ -444,8 +447,8 @@ validation = np.stack(validation)
 
 print("input and validation datasets made")
 
-model.fit(input, validation, batch_size= 1,epochs=20)
+#model.fit(input, validation, batch_size= 1,epochs=20)
 
-
+#model.save("image_segmentation.keras")
 
 
